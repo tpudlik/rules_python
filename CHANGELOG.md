@@ -19,6 +19,65 @@ A brief description of the categories of changes:
 
 ## Unreleased
 
+### Changed
+
+* (runfiles) `rules_python.python.runfiles` now directly implements type hints
+  and drops support for python2 as a result.
+
+* (toolchains) `py_runtime`, `py_runtime_pair`, and `PyRuntimeInfo` now use the
+  rules_python Starlark implementation, not the one built into Bazel. NOTE: This
+  only applies to Bazel 6+; Bazel 5 still uses the builtin implementation.
+
+* (pip_parse) The parameter `experimental_requirement_cycles` may be provided a
+  map of names to lists of requirements which form a dependency
+  cycle. `pip_parse` will break the cycle for you transparently. This behavior
+  is also available under bzlmod as
+  `pip.parse(experimental_requirement_cycles={})`.
+
+* (pip_install) the deprecated `pip_install` macro and related items have been
+  removed.
+
+* (toolchains) `py_runtime` can now take an executable target. Note: runfiles
+  from the target are not supported yet.
+
+### Fixed
+
+* (gazelle) The gazelle plugin helper was not working with Python toolchains 3.11
+  and above due to a bug in the helper components not being on PYTHONPATH.
+
+* (pip_parse) The repositories created by `whl_library` can now parse the `whl`
+  METADATA and generate dependency closures irrespective of the host platform
+  the generation is executed on. This can be turned on by supplying
+  `experimental_target_platforms = ["all"]` to the `pip_parse` or the `bzlmod`
+  equivalent. This may help in cases where fetching wheels for a different
+  platform using `download_only = True` feature.
+* (bzlmod pip.parse) The `pip.parse(python_interpreter)` arg now works for
+  specifying a local system interpreter.
+* (bzlmod pip.parse) Requirements files with duplicate entries for the same
+  package (e.g. one for the package, one for an extra) now work.
+* (bzlmod python.toolchain) Submodules can now (re)register the Python version
+  that rules_python has set as the default.
+  ([#1638](https://github.com/bazelbuild/rules_python/issues/1638))
+* (whl_library) Actually use the provided patches to patch the whl_library.
+  On Windows the patching may result in files with CRLF line endings, as a result
+  the RECORD file consistency requirement is lifted and now a warning is emitted
+  instead with a location to the patch that could be used to silence the warning.
+  Copy the patch to your workspace and add it to the list if patches for the wheel
+  file if you decide to do so.
+* (coverage): coverage reports are now created when the version-aware
+  rules are used.
+  ([#1600](https://github.com/bazelbuild/rules_python/issues/1600))
+* (toolchains) Workspace builds register the py cc toolchain (bzlmod already
+  was). This makes e.g. `//python/cc:current_py_cc_headers` Just Work.
+  ([#1669](https://github.com/bazelbuild/rules_python/issues/1669))
+
+### Added
+
+* (docs) bzlmod extensions are now documented on rules-python.readthedocs.io
+* (gazelle) `file` generation mode can now also add `__init__.py` to the srcs
+  attribute for every target in the package. This is enabled through a separate
+  directive `python_generation_mode_per_file_include_init`.
+
 [0.XX.0]: https://github.com/bazelbuild/rules_python/releases/tag/0.XX.0
 
 ## [0.27.0] - 2023-11-16

@@ -18,6 +18,7 @@ load("@bazel_features//:features.bzl", "bazel_features")
 load("@pythons_hub//:interpreters.bzl", "DEFAULT_PYTHON_VERSION", "INTERPRETER_LABELS")
 load(
     "//python/pip_install:pip_repository.bzl",
+    "group_library",
     "locked_requirements_label",
     "pip_repository_attrs",
     "use_isolated",
@@ -85,7 +86,7 @@ def _create_whl_repos(module_ctx, pip_attr, whl_map, whl_overrides):
     # if we do not have the python_interpreter set in the attributes
     # we programmatically find it.
     hub_name = pip_attr.hub_name
-    if python_interpreter_target == None:
+    if python_interpreter_target == None and not pip_attr.python_interpreter:
         python_name = "python_" + version_label(pip_attr.python_version, sep = "_")
         if python_name not in INTERPRETER_LABELS.keys():
             fail((
@@ -108,7 +109,19 @@ def _create_whl_repos(module_ctx, pip_attr, whl_map, whl_overrides):
     # needed for the whl_libary declarations below.
     requirements_lock_content = module_ctx.read(requrements_lock)
     parse_result = parse_requirements(requirements_lock_content)
-    requirements = parse_result.requirements
+
+    # Replicate a surprising behavior that WORKSPACE builds allowed:
+    # Defining a repo with the same name multiple times, but only the last
+    # definition is respected.
+    # The requirement lines might have duplicate names because lines for extras
+    # are returned as just the base package name. e.g., `foo[bar]` results
+    # in an entry like `("foo", "foo[bar] == 1.0 ...")`.
+    requirements = {
+        normalize_name(entry[0]): entry
+        # The WORKSPACE pip_parse sorted entries, so mimic that ordering.
+        for entry in sorted(parse_result.requirements)
+    }.values()
+
     extra_pip_args = pip_attr.extra_pip_args + parse_result.options
 
     if hub_name not in whl_map:
@@ -119,6 +132,24 @@ def _create_whl_repos(module_ctx, pip_attr, whl_map, whl_overrides):
         for mod, whl_name in pip_attr.whl_modifications.items():
             whl_modifications[whl_name] = mod
 
+    requirement_cycles = {
+        name: [normalize_name(whl_name) for whl_name in whls]
+        for name, whls in pip_attr.experimental_requirement_cycles.items()
+    }
+
+    whl_group_mapping = {
+        whl_name: group_name
+        for group_name, group_whls in requirement_cycles.items()
+        for whl_name in group_whls
+    }
+
+    group_repo = "%s__groups" % (pip_name,)
+    group_library(
+        name = group_repo,
+        repo_prefix = pip_name + "_",
+        groups = pip_attr.experimental_requirement_cycles,
+    )
+
     # Create a new wheel library for each of the different whls
     for whl_name, requirement_line in requirements:
         # We are not using the "sanitized name" because the user
@@ -126,6 +157,9 @@ def _create_whl_repos(module_ctx, pip_attr, whl_map, whl_overrides):
         # to.
         annotation = whl_modifications.get(whl_name)
         whl_name = normalize_name(whl_name)
+        group_name = whl_group_mapping.get(whl_name)
+        group_deps = requirement_cycles.get(group_name, [])
+
         whl_library(
             name = "%s_%s" % (pip_name, whl_name),
             requirement = requirement_line,
@@ -136,6 +170,7 @@ def _create_whl_repos(module_ctx, pip_attr, whl_map, whl_overrides):
                 p: json.encode(args)
                 for p, args in whl_overrides.get(whl_name, {}).items()
             },
+            experimental_target_platforms = pip_attr.experimental_target_platforms,
             python_interpreter = pip_attr.python_interpreter,
             python_interpreter_target = python_interpreter_target,
             quiet = pip_attr.quiet,
@@ -146,6 +181,8 @@ def _create_whl_repos(module_ctx, pip_attr, whl_map, whl_overrides):
             pip_data_exclude = pip_attr.pip_data_exclude,
             enable_implicit_namespace_pkgs = pip_attr.enable_implicit_namespace_pkgs,
             environment = pip_attr.environment,
+            group_name = group_name,
+            group_deps = group_deps,
         )
 
         if whl_name not in whl_map[hub_name]:
@@ -332,13 +369,14 @@ Targets from different hubs should not be used together.
         "python_version": attr.string(
             mandatory = True,
             doc = """
-The Python version to use for resolving the pip dependencies, in Major.Minor
-format (e.g. "3.11"). Patch level granularity (e.g. "3.11.1") is not supported.
+The Python version the dependencies are targetting, in Major.Minor format
+(e.g., "3.11"). Patch level granularity (e.g. "3.11.1") is not supported.
 If not specified, then the default Python version (as set by the root module or
 rules_python) will be used.
 
-The version specified here must have a corresponding `python.toolchain()`
-configured.
+If an interpreter isn't explicitly provided (using `python_interpreter` or
+`python_interpreter_target`), then the version specified here must have
+a corresponding `python.toolchain()` configured.
 """,
         ),
         "whl_modifications": attr.label_keyed_string_dict(
