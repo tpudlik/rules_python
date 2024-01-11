@@ -632,6 +632,10 @@ def UnresolveSymlinks(output_filename):
 
 def ExecuteFile(python_program, main_filename, args, env, module_space,
                 coverage_entrypoint, workspace, delete_module_space):
+  # NOTE: The next lines are the modified ones!
+  executable = env.pop("PYTHONEXECUTABLE", None)
+  print("The value of PYTHONEXECUTABLE was {}".format(executable))
+  env["PYTHONEXECUTABLE"] = python_program
   # type: (str, str, list[str], dict[str, str], str, str|None, str|None) -> ...
   # We want to use os.execv instead of subprocess.call, which causes
   # problems with signal passing (making it difficult to kill
@@ -671,9 +675,6 @@ def ExecuteFile(python_program, main_filename, args, env, module_space,
 
 def _RunExecv(python_program, main_filename, args, env):
   # type: (str, str, list[str], dict[str, str]) -> ...
-  # NOTE: The next line is the modified one!
-  executable = os.environ.pop("PYTHONEXECUTABLE", None)
-  print("The value of PYTHONEXECUTABLE was {}".format(executable))
   os.environ.update(env)
   os.execv(python_program, [python_program, main_filename] + args)
 
