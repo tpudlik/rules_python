@@ -671,11 +671,11 @@ def ExecuteFile(python_program, main_filename, args, env, module_space,
 
 def _RunExecv(python_program, main_filename, args, env):
   # type: (str, str, list[str], dict[str, str]) -> ...
+  # NOTE: The next line is the modified one!
+  executable = os.environ.pop("PYTHONEXECUTABLE", None)
+  print("The value of PYTHONEXECUTABLE was {}".format(executable))
   os.environ.update(env)
-  # NOTE: The next lines are the modified ones!
-  subprocess.run(["dtruss", python_program, main_filename] + args)
-  sys.exit(0)
-  # os.execv(python_program, [python_program, main_filename] + args)
+  os.execv(python_program, [python_program, main_filename] + args)
 
 def _RunForCoverage(python_program, main_filename, args, env,
                     coverage_entrypoint, workspace):
