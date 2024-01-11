@@ -673,7 +673,7 @@ def _RunExecv(python_program, main_filename, args, env):
   # type: (str, str, list[str], dict[str, str]) -> ...
   os.environ.update(env)
   # NOTE: The next lines are the modified ones!
-  subprocess.run(["strace", "-e", "trace=%file", python_program, main_filename] + args)
+  subprocess.run(["dtruss", python_program, main_filename] + args)
   sys.exit(0)
   # os.execv(python_program, [python_program, main_filename] + args)
 
